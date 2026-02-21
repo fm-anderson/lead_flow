@@ -36,7 +36,7 @@ begin
         user_agent: USER_AGENT
       )
 
-      leads = connector.fetch(limit: 40)
+      leads = connector.fetch(limit: 100)
       
       found_count = 0
       leads.each do |lead|
