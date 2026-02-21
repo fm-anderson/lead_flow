@@ -1,0 +1,25 @@
+# --- Lead Flow Environment & Secrets ---
+.env
+.env.local
+.env.*.local
+
+# --- Ruby & Dependencies ---
+/.bundle/
+/vendor/bundle/
+# Gemfile.lock
+
+# --- Local State & Cache ---
+/db/*.sqlite3
+/storage/
+/log/
+*.log
+/tmp/
+local/
+local.*
+
+# --- OS & Editor ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
