@@ -5,7 +5,7 @@ require "uri"
 module LeadFlow
   module Connectors
     class RedditJson < Base
-      BASE_URL = "https://www.reddit.com/r/%s/new.json?limit=%d"
+      BASE_URL = "https://www.reddit.com/r/%s.json?sort=new&limit=%d"
 
       def initialize(subreddit:, user_agent:, limit: 25)
         @subreddit = subreddit
@@ -17,6 +17,7 @@ module LeadFlow
         limit ||= @limit
         url = sprintf(BASE_URL, @subreddit, limit)
         url += "&after=#{after}" if after
+        url += "&t=#{Time.now.to_i}" # Cache busting
 
         uri = URI(url)
         request = Net::HTTP::Get.new(uri)
@@ -61,6 +62,8 @@ module LeadFlow
 
       def process_response(json)
         children = json.dig("data", "children") || []
+        # Filter out stickied/pinned posts
+        children.reject! { |child| child.dig("data", "stickied") == true }
         children.map { |child| normalize(child["data"]) }
       end
     end

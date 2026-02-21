@@ -1,62 +1,72 @@
-require "faraday"
 require "json"
+require "open3"
+require "shellwords"
 
 module LeadFlow
   module Core
     class Evaluator
-      def initialize(api_key:, provider: :gemini)
-        @api_key = api_key
+      def initialize(provider: :gemini_cli)
         @provider = provider
       end
 
-      # The "AI Brain" confirms if the user is actually looking for a service.
-      def confirm_intent?(lead)
+      def confirm_intent?(lead, business_context:, business_solutions:)
         prompt = <<~PROMPT
-          You are a Lead Generation Assistant. Analyze this social media post:
+          You are a Sales Discovery Assistant. I want you to find leads for MY business.
 
+          MY BUSINESS CONTEXT:
+          #{business_context}
+
+          THE PROBLEMS I SOLVE:
+          #{business_solutions}
+
+          POST TO ANALYZE:
           TITLE: #{lead.title}
           CONTENT: #{lead.content}
 
           CLASSIFICATION CRITERIA:
-          - YES: The author is explicitly looking to BUY, HIRE, or FIND a professional tool/service (e.g., "Recommend a billing software", "I need an accountant", "What's the best tool for...").
-          - NO: The author is just asking for advice, complaining, sharing news, or is a service provider themselves (e.g., "How do I do X?", "I hate this software", "Here is my blog post").
+          - YES: The author is facing a SPECIFIC, PERSONAL problem or need that MY business solves. They are ASKING for a solution, tool, or direct advice for their current situation.
+          - NO: The author is just sharing general news, giving advice to others, posting a tutorial, or is a service provider marketing themselves.
 
-          TASK: Based on the criteria, is this a high-intent lead? 
-          ANSWER: Respond with ONLY "YES" or "NO".
+          TASK: Based on MY business context, is this a high-intent lead that I can help with?
+          FORMAT:
+          REASONING: [1 sentence explaining how it relates to my business]
+          FINAL_ANSWER: [YES/NO]
         PROMPT
 
-        call_ai(prompt)
+        confirmed, reasoning = call_ai(prompt)
+        [confirmed, reasoning]
       end
 
       private
 
       def call_ai(prompt)
         case @provider.to_sym
-        when :gemini
-          call_gemini(prompt)
+        when :gemini_cli
+          call_gemini_cli(prompt)
         else
           raise "Unsupported AI provider: #{@provider}"
         end
       end
 
-      def call_gemini(prompt)
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=#{@api_key}"
-        
-        response = Faraday.post(url) do |req|
-          req.headers["Content-Type"] = "application/json"
-          req.body = {
-            contents: [{ parts: [{ text: prompt }] }]
-          }.to_json
+      def call_gemini_cli(prompt)
+        # Use the gemini CLI in headless mode with gemini-2.5-flash
+        cmd = "gemini --model gemini-2.5-flash --prompt #{Shellwords.escape(prompt)} --output-format text"
+        stdout, stderr, status = Open3.capture3(cmd)
+
+        if status.success?
+          parse_answer(stdout.to_s)
+        else
+          puts "Gemini CLI Error: #{stderr}"
+          [false, "Error: #{stderr}"]
         end
+      end
 
-        return false unless response.success?
-
-        result = JSON.parse(response.body)
-        answer = result.dig("candidates", 0, "content", "parts", 0, "text").to_s.strip.upcase
-        answer == "YES"
-      rescue StandardError => e
-        puts "AI Evaluation Error: #{e.message}"
-        false
+      def parse_answer(full_text)
+        # Extract reasoning and final answer from the CLI output
+        reasoning = full_text.match(/REASONING:\s*(.*)/)&.captures&.first
+        answer = (full_text.match(/FINAL_ANSWER:\s*(YES|NO)/)&.captures&.first || full_text).upcase
+        
+        [answer.include?("YES"), reasoning]
       end
     end
   end

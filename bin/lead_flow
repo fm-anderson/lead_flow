@@ -8,6 +8,8 @@ KEYWORDS = ENV.fetch("MONITOR_KEYWORDS", "").split(",")
 SUBREDDITS = ENV.fetch("REDDIT_SUBREDDITS", "freelance,smallbusiness").split(",")
 USER_AGENT = ENV["REDDIT_USER_AGENT"]
 AI_KEY = ENV["AI_API_KEY"]
+BUSINESS_CONTEXT = ENV["BUSINESS_CONTEXT"]
+BUSINESS_SOLUTIONS = ENV["BUSINESS_SOLUTIONS"]
 
 puts "🚀 Lead Flow Engine Started..."
 puts "----------------------------------------"
@@ -18,7 +20,7 @@ puts "----------------------------------------"
 # Initialize Core Components
 filter = LeadFlow::Core::Filter.new(keywords: KEYWORDS)
 deduplicator = LeadFlow::Core::Deduplicator.new(storage_path: "db/seen_ids.txt")
-evaluator = LeadFlow::Core::Evaluator.new(api_key: AI_KEY) if AI_KEY
+evaluator = LeadFlow::Core::Evaluator.new(provider: :gemini_cli)
 
 SUBREDDITS.each do |subreddit|
   puts "🔍 Scanning r/#{subreddit}..."
@@ -28,7 +30,7 @@ SUBREDDITS.each do |subreddit|
     user_agent: USER_AGENT
   )
 
-  leads = connector.fetch(limit: 50)
+  leads = connector.fetch(limit: 10)
 
   leads.each do |lead|
     # Step 1: Check for duplicates
@@ -39,17 +41,29 @@ SUBREDDITS.each do |subreddit|
       puts "\n✨ Potential Lead Found: [#{lead.source}] #{lead.title}"
       puts "URL: #{lead.url}"
 
-      # Step 3: AI Evaluation (Optional if API key is present)
-      if evaluator
-        print "🧠 Evaluating Intent... "
-        if evaluator.confirm_intent?(lead)
-          puts "✅ CONFIRMED"
-          # TODO: Trigger Notifier here
-        else
-          puts "❌ DISCARDED"
+      # Step 3: AI Evaluation
+      print "🧠 Evaluating Intent... "
+      
+      confirmed, reasoning = evaluator.confirm_intent?(
+        lead, 
+        business_context: BUSINESS_CONTEXT, 
+        business_solutions: BUSINESS_SOLUTIONS
+      )
+
+      if confirmed
+        puts "✅ CONFIRMED"
+        puts "   Reason: #{reasoning}" if reasoning
+        
+        # Log the confirmed lead
+        File.open("db/confirmed_leads.log", "a") do |f|
+          f.puts "[#{Time.now.strftime('%Y-%m-%d %H:%M')}] #{lead.title}"
+          f.puts "URL: #{lead.url}"
+          f.puts "Reason: #{reasoning}" if reasoning
+          f.puts "-" * 40
         end
       else
-        puts "⚠️ Skipping AI evaluation (No AI_API_KEY found)"
+        puts "❌ DISCARDED"
+        puts "   Reason: #{reasoning}" if reasoning
       end
     end
   end
