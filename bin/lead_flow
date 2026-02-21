@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+
+require_relative "../lib/lead_flow"
+
+puts "🚀 Lead Flow Engine Started..."
+# TODO: orchestration logic here.
+if ENV["MONITOR_KEYWORDS"]
+  puts "Monitoring: #{ENV["MONITOR_KEYWORDS"]}"
+else
+  puts "⚠️ Warning: No MONITOR_KEYWORDS found in .env"
+end
