@@ -32,7 +32,7 @@ SUBREDDITS.each do |subreddit|
       user_agent: USER_AGENT
     )
 
-    leads = connector.fetch(limit: 10)
+    leads = connector.fetch(limit: 40)
 
     leads.each do |lead|
       # Step 1: Check for duplicates
