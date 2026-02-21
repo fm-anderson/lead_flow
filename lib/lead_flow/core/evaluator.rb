@@ -11,18 +11,20 @@ module LeadFlow
 
       # The "AI Brain" confirms if the user is actually looking for a service.
       def confirm_intent?(lead)
-        # Prepare the prompt for the AI
         prompt = <<~PROMPT
-          Analyze the following text from a social platform:
-          
+          You are a Lead Generation Assistant. Analyze this social media post:
+
           TITLE: #{lead.title}
           CONTENT: #{lead.content}
-          
-          TASK: Is the author clearly looking for a professional service or tool (e.g., invoicing software, billing tool, etc.)?
-          Answer ONLY "YES" or "NO".
+
+          CLASSIFICATION CRITERIA:
+          - YES: The author is explicitly looking to BUY, HIRE, or FIND a professional tool/service (e.g., "Recommend a billing software", "I need an accountant", "What's the best tool for...").
+          - NO: The author is just asking for advice, complaining, sharing news, or is a service provider themselves (e.g., "How do I do X?", "I hate this software", "Here is my blog post").
+
+          TASK: Based on the criteria, is this a high-intent lead? 
+          ANSWER: Respond with ONLY "YES" or "NO".
         PROMPT
 
-        # Call the appropriate AI provider
         call_ai(prompt)
       end
 
