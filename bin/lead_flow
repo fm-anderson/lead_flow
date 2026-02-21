@@ -1,11 +1,58 @@
 #!/usr/bin/env ruby
 
 require_relative "../lib/lead_flow"
+require "dotenv/load"
+
+# Configuration
+KEYWORDS = ENV.fetch("MONITOR_KEYWORDS", "").split(",")
+SUBREDDITS = ENV.fetch("REDDIT_SUBREDDITS", "freelance,smallbusiness").split(",")
+USER_AGENT = ENV["REDDIT_USER_AGENT"]
+AI_KEY = ENV["AI_API_KEY"]
 
 puts "🚀 Lead Flow Engine Started..."
-# TODO: orchestration logic here.
-if ENV["MONITOR_KEYWORDS"]
-  puts "Monitoring: #{ENV["MONITOR_KEYWORDS"]}"
-else
-  puts "⚠️ Warning: No MONITOR_KEYWORDS found in .env"
+puts "----------------------------------------"
+puts "Monitoring Keywords: #{KEYWORDS.join(', ')}"
+puts "Subreddits: #{SUBREDDITS.join(', ')}"
+puts "----------------------------------------"
+
+# Initialize Core Components
+filter = LeadFlow::Core::Filter.new(keywords: KEYWORDS)
+deduplicator = LeadFlow::Core::Deduplicator.new(storage_path: "db/seen_ids.txt")
+evaluator = LeadFlow::Core::Evaluator.new(api_key: AI_KEY) if AI_KEY
+
+SUBREDDITS.each do |subreddit|
+  puts "🔍 Scanning r/#{subreddit}..."
+  
+  connector = LeadFlow::Connectors::RedditJson.new(
+    subreddit: subreddit,
+    user_agent: USER_AGENT
+  )
+
+  leads = connector.fetch(limit: 50)
+
+  leads.each do |lead|
+    # Step 1: Check for duplicates
+    next if deduplicator.duplicate?(lead.external_id)
+
+    # Step 2: Filter noise (Regex)
+    if filter.match?(lead)
+      puts "\n✨ Potential Lead Found: [#{lead.source}] #{lead.title}"
+      puts "URL: #{lead.url}"
+
+      # Step 3: AI Evaluation (Optional if API key is present)
+      if evaluator
+        print "🧠 Evaluating Intent... "
+        if evaluator.confirm_intent?(lead)
+          puts "✅ CONFIRMED"
+          # TODO: Trigger Notifier here
+        else
+          puts "❌ DISCARDED"
+        end
+      else
+        puts "⚠️ Skipping AI evaluation (No AI_API_KEY found)"
+      end
+    end
+  end
 end
+
+puts "\n✅ Scan Complete."

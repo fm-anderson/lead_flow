@@ -9,6 +9,7 @@
 # Gemfile.lock
 
 # --- Local State & Cache ---
+db/
 /db/*.sqlite3
 /storage/
 /log/
