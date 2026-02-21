@@ -2,79 +2,85 @@
 
 require_relative "../lib/lead_flow"
 require "dotenv/load"
+require "logger"
+
+# Set up logging to a file, rotating it when it hits 1MB, keeping 3 old logs
+log_file = File.join(File.dirname(__FILE__), "../db/lead_flow.log")
+Dir.mkdir("db") unless Dir.exist?("db")
+logger = Logger.new(log_file, 3, 1024 * 1024)
+
+# Use a clean format: [Timestamp] LEVEL: Message
+logger.formatter = proc { |severity, datetime, progname, msg|
+  "#{datetime.strftime('%Y-%m-%d %H:%M:%S')} #{severity}: #{msg}\n"
+}
 
 # Configuration
 KEYWORDS = ENV.fetch("MONITOR_KEYWORDS", "").split(",")
 SUBREDDITS = ENV.fetch("REDDIT_SUBREDDITS", "freelance,smallbusiness").split(",")
 USER_AGENT = ENV["REDDIT_USER_AGENT"]
-AI_KEY = ENV["AI_API_KEY"]
 BUSINESS_CONTEXT = ENV["BUSINESS_CONTEXT"]
 BUSINESS_SOLUTIONS = ENV["BUSINESS_SOLUTIONS"]
 
-puts "🚀 Lead Flow Engine Started..."
-puts "----------------------------------------"
-puts "Monitoring Keywords: #{KEYWORDS.join(', ')}"
-puts "Subreddits: #{SUBREDDITS.join(', ')}"
-puts "----------------------------------------"
+logger.info("Starting Scan: #{SUBREDDITS.join(', ')}")
 
-# Initialize Core Components
-filter = LeadFlow::Core::Filter.new(keywords: KEYWORDS)
-deduplicator = LeadFlow::Core::Deduplicator.new(storage_path: "db/seen_ids.txt")
-evaluator = LeadFlow::Core::Evaluator.new(provider: :gemini_cli)
-notifier = LeadFlow::Notifiers::Discord.new(webhook_url: ENV["DISCORD_WEBHOOK_URL"])
+begin
+  filter = LeadFlow::Core::Filter.new(keywords: KEYWORDS)
+  deduplicator = LeadFlow::Core::Deduplicator.new(storage_path: "db/seen_ids.txt")
+  evaluator = LeadFlow::Core::Evaluator.new(provider: :gemini_cli)
+  notifier = LeadFlow::Notifiers::Discord.new(webhook_url: ENV["DISCORD_WEBHOOK_URL"])
 
-SUBREDDITS.each do |subreddit|
-  begin
-    puts "🔍 Scanning r/#{subreddit}..."
-    
-    connector = LeadFlow::Connectors::RedditJson.new(
-      subreddit: subreddit,
-      user_agent: USER_AGENT
-    )
+  SUBREDDITS.each_with_index do |subreddit, index|
+    begin
+      connector = LeadFlow::Connectors::RedditJson.new(
+        subreddit: subreddit,
+        user_agent: USER_AGENT
+      )
 
-    leads = connector.fetch(limit: 40)
+      leads = connector.fetch(limit: 40)
+      
+      found_count = 0
+      leads.each do |lead|
+        next if deduplicator.duplicate?(lead.external_id)
 
-    leads.each do |lead|
-      # Step 1: Check for duplicates
-      next if deduplicator.duplicate?(lead.external_id)
+        if filter.match?(lead)
+          puts "\nPotential Lead Found: [#{lead.source}] #{lead.title}"
+          puts "URL: #{lead.url}"
+          print "Evaluating Intent... "
 
-      # Step 2: Filter noise (Regex)
-      if filter.match?(lead)
-        puts "\n✨ Potential Lead Found: [#{lead.source}] #{lead.title}"
-        puts "URL: #{lead.url}"
+          confirmed, reasoning = evaluator.confirm_intent?(
+            lead,
+            business_context: BUSINESS_CONTEXT,
+            business_solutions: BUSINESS_SOLUTIONS
+          )
 
-        # Step 3: AI Evaluation
-        print "🧠 Evaluating Intent... "
-        
-        confirmed, reasoning = evaluator.confirm_intent?(
-          lead, 
-          business_context: BUSINESS_CONTEXT, 
-          business_solutions: BUSINESS_SOLUTIONS
-        )
+          if confirmed
+            puts "✅ CONFIRMED"
+            puts "   Reason: #{reasoning}" if reasoning
 
-        if confirmed
-          puts "✅ CONFIRMED"
-          puts "   Reason: #{reasoning}" if reasoning
-          
-          # Send Live Notification
-          notifier.notify(lead, reasoning: reasoning)
-
-          # Log the confirmed lead
-          File.open("db/confirmed_leads.log", "a") do |f|
-            f.puts "[#{Time.now.strftime('%Y-%m-%d %H:%M')}] #{lead.title}"
-            f.puts "URL: #{lead.url}"
-            f.puts "Reason: #{reasoning}" if reasoning
-            f.puts "-" * 40
+            found_count += 1
+            notifier.notify(lead, reasoning: reasoning)
+            File.open("db/confirmed_leads.log", "a") do |f|
+              f.puts "[#{Time.now.strftime('%Y-%m-%d %H:%M')}] #{lead.title}"
+              f.puts "URL: #{lead.url}"
+              f.puts "Reason: #{reasoning}" if reasoning
+              f.puts "-" * 40
+            end
           end
-        else
-          puts "❌ DISCARDED"
-          puts "   Reason: #{reasoning}" if reasoning
         end
       end
-    end
-  rescue StandardError => e
-    puts "⚠️ Error scanning r/#{subreddit}: #{e.message}"
-  end
-end
+      
+      logger.info("Finished r/#{subreddit}. Potential leads confirmed: #{found_count}")
 
-puts "\n✅ Scan Complete."
+      sleep(4) if index < SUBREDDITS.size - 1
+    rescue StandardError => e
+      logger.error("Failed r/#{subreddit}: #{e.message}")
+    end
+  end
+  
+  puts "Scan Complete."
+  logger.info("Scan Complete.")
+  logger.info("--------------")
+
+rescue Interrupt, StandardError => e
+  logger.fatal("Critical Script Failure: #{e.message}\n#{e.backtrace.join("\n")}")
+end
