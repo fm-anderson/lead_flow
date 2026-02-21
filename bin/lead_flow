@@ -21,51 +21,59 @@ puts "----------------------------------------"
 filter = LeadFlow::Core::Filter.new(keywords: KEYWORDS)
 deduplicator = LeadFlow::Core::Deduplicator.new(storage_path: "db/seen_ids.txt")
 evaluator = LeadFlow::Core::Evaluator.new(provider: :gemini_cli)
+notifier = LeadFlow::Notifiers::Discord.new(webhook_url: ENV["DISCORD_WEBHOOK_URL"])
 
 SUBREDDITS.each do |subreddit|
-  puts "🔍 Scanning r/#{subreddit}..."
-  
-  connector = LeadFlow::Connectors::RedditJson.new(
-    subreddit: subreddit,
-    user_agent: USER_AGENT
-  )
+  begin
+    puts "🔍 Scanning r/#{subreddit}..."
+    
+    connector = LeadFlow::Connectors::RedditJson.new(
+      subreddit: subreddit,
+      user_agent: USER_AGENT
+    )
 
-  leads = connector.fetch(limit: 10)
+    leads = connector.fetch(limit: 10)
 
-  leads.each do |lead|
-    # Step 1: Check for duplicates
-    next if deduplicator.duplicate?(lead.external_id)
+    leads.each do |lead|
+      # Step 1: Check for duplicates
+      next if deduplicator.duplicate?(lead.external_id)
 
-    # Step 2: Filter noise (Regex)
-    if filter.match?(lead)
-      puts "\n✨ Potential Lead Found: [#{lead.source}] #{lead.title}"
-      puts "URL: #{lead.url}"
+      # Step 2: Filter noise (Regex)
+      if filter.match?(lead)
+        puts "\n✨ Potential Lead Found: [#{lead.source}] #{lead.title}"
+        puts "URL: #{lead.url}"
 
-      # Step 3: AI Evaluation
-      print "🧠 Evaluating Intent... "
-      
-      confirmed, reasoning = evaluator.confirm_intent?(
-        lead, 
-        business_context: BUSINESS_CONTEXT, 
-        business_solutions: BUSINESS_SOLUTIONS
-      )
-
-      if confirmed
-        puts "✅ CONFIRMED"
-        puts "   Reason: #{reasoning}" if reasoning
+        # Step 3: AI Evaluation
+        print "🧠 Evaluating Intent... "
         
-        # Log the confirmed lead
-        File.open("db/confirmed_leads.log", "a") do |f|
-          f.puts "[#{Time.now.strftime('%Y-%m-%d %H:%M')}] #{lead.title}"
-          f.puts "URL: #{lead.url}"
-          f.puts "Reason: #{reasoning}" if reasoning
-          f.puts "-" * 40
+        confirmed, reasoning = evaluator.confirm_intent?(
+          lead, 
+          business_context: BUSINESS_CONTEXT, 
+          business_solutions: BUSINESS_SOLUTIONS
+        )
+
+        if confirmed
+          puts "✅ CONFIRMED"
+          puts "   Reason: #{reasoning}" if reasoning
+          
+          # Send Live Notification
+          notifier.notify(lead, reasoning: reasoning)
+
+          # Log the confirmed lead
+          File.open("db/confirmed_leads.log", "a") do |f|
+            f.puts "[#{Time.now.strftime('%Y-%m-%d %H:%M')}] #{lead.title}"
+            f.puts "URL: #{lead.url}"
+            f.puts "Reason: #{reasoning}" if reasoning
+            f.puts "-" * 40
+          end
+        else
+          puts "❌ DISCARDED"
+          puts "   Reason: #{reasoning}" if reasoning
         end
-      else
-        puts "❌ DISCARDED"
-        puts "   Reason: #{reasoning}" if reasoning
       end
     end
+  rescue StandardError => e
+    puts "⚠️ Error scanning r/#{subreddit}: #{e.message}"
   end
 end
 
