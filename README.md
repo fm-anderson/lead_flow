@@ -1,22 +1,22 @@
-# Lead Flow 🚀
+# Lead Flow
 
 **Lead Flow** is a lean, pluggable lead-generation engine built in Ruby. It is designed to scan social platforms for high-intent leads using a **"Filter First, AI Second"** philosophy.
 
 ---
 
-## 💡 The Philosophy
+## The Philosophy
 
-Most AI lead generation tools are over-engineered and expensive. They use LLMs to read every single post, leading to massive API bills and unnecessary complexity.
+Most AI lead generation tools are over-engineered and expensive. They use LLMs to read all their data, leading to massive API bills and unnecessary complexity.
 
 **Lead Flow** takes a different approach:
 
-1.  **Regex-Based Filtering:** Use basic string/regex matching to discard 99% of the noise (posts without specific keywords) for free.
+1.  **Regex-Based Filtering:** Use basic string/regex matching to discard 99% of the noise (posts without specific keywords).
 2.  **Local AI Verification:** Use your local `gemini-cli` only for the final 1%—to confirm if a post represents a real opportunity based on **your specific business context**.
 3.  **Pluggable Connectors:** Decoupled architecture allows anyone to add new platforms (Reddit, LinkedIn, X) by mapping them to our standard schema.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 The project is built as a series of decoupled Ruby modules:
 
@@ -29,7 +29,7 @@ The project is built as a series of decoupled Ruby modules:
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Prerequisites
 - Ruby 3.x
@@ -68,7 +68,7 @@ Confirmed leads will be logged to `db/confirmed_leads.log`.
 
 ---
 
-## 📋 Standardized Lead Schema
+## Standardized Lead Schema
 
 Every connector transforms data into this uniform structure:
 
@@ -87,7 +87,7 @@ Every connector transforms data into this uniform structure:
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We love contributions!
 1.  **Create a New Connector:** Add a class to `lib/lead_flow/connectors/` that inherits from `Base`.
