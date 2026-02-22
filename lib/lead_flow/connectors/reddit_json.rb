@@ -5,7 +5,7 @@ require "uri"
 module LeadFlow
   module Connectors
     class RedditJson < Base
-      BASE_URL = "https://www.reddit.com/r/%s.json?sort=new&limit=%d"
+      BASE_URL = "https://www.reddit.com/r/%s/new.json?limit=%d"
 
       def initialize(subreddit:, user_agent:, limit: 25)
         @subreddit = subreddit
@@ -14,28 +14,29 @@ module LeadFlow
       end
 
       def fetch(after: nil, limit: nil)
-        limit ||= @limit
-        url = sprintf(BASE_URL, @subreddit, limit)
+        current_limit = limit || @limit
+        url = sprintf(BASE_URL, @subreddit, current_limit)
         url += "&after=#{after}" if after
-        url += "&t=#{Time.now.to_i}" # Cache busting
-
+        
         uri = URI(url)
-        request = Net::HTTP::Get.new(uri)
-        request["User-Agent"] = @user_agent
+        response = make_request(uri)
 
-        response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) do |http|
-          http.request(request)
+        if response.code == "429"
+          wait_time = (response["retry-after"] || 90).to_i
+          warn "\n[!] Rate limited on r/#{@subreddit}. Sleeping for #{wait_time}s..."
+          sleep(wait_time)
+          response = make_request(uri)
         end
 
         case response
         when Net::HTTPSuccess
           process_response(JSON.parse(response.body))
         else
-          puts "Reddit API Error: #{response.code} #{response.message}"
+          warn "\n[!] Reddit API Error: #{response.code} #{response.message} (r/#{@subreddit})"
           []
         end
       rescue StandardError => e
-        puts "Reddit Connector Error: #{e.message}"
+        warn "\n[!] Reddit Connector Error: #{e.message}"
         []
       end
 
@@ -60,9 +61,18 @@ module LeadFlow
 
       private
 
+      def make_request(uri)
+        request = Net::HTTP::Get.new(uri)
+        request["User-Agent"] = @user_agent
+
+        Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) do |http|
+          http.request(request)
+        end
+      end
+
       def process_response(json)
         children = json.dig("data", "children") || []
-        # Filter out stickied/pinned posts
+        # Filter out stickied/pinned posts as they are usually old/rules
         children.reject! { |child| child.dig("data", "stickied") == true }
         children.map { |child| normalize(child["data"]) }
       end

@@ -71,7 +71,7 @@ begin
       
       logger.info("Finished r/#{subreddit}. Potential leads confirmed: #{found_count}")
 
-      sleep(4) if index < SUBREDDITS.size - 1
+      sleep(rand(3..8)) if index < SUBREDDITS.size - 1
     rescue StandardError => e
       logger.error("Failed r/#{subreddit}: #{e.message}")
     end
