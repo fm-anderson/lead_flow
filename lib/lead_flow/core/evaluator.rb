@@ -55,17 +55,28 @@ module LeadFlow
       end
 
       def call_gemini_cli(prompt)
-        model = ENV.fetch("GEMINI_MODEL", "gemini-2.5-flash")
-        
+        model = ENV.fetch("GEMINI_MODEL", "gemini-3-flash-preview")
         cmd = "gemini --model #{model} --non-interactive -"
         
-        stdout, stderr, status = Open3.capture3(cmd, stdin_data: prompt)
+        stdout_str = ""
+        stderr_str = ""
 
-        if status.success?
-          parse_answer(stdout.to_s)
-        else
-          [false, "Error: #{stderr}"]
+        Open3.popen3(cmd) do |stdin, stdout, stderr, wait_thr|
+          stdin.puts(prompt)
+          stdin.close
+          
+          stdout_str = stdout.read
+          stderr_str = stderr.read
+          status = wait_thr.value
+          
+          if status.success?
+            return parse_answer(stdout_str)
+          else
+            return [false, "Error: #{stderr_str}"]
+          end
         end
+      rescue StandardError => e
+        [false, "Runtime Error: #{e.message}"]
       end
 
       def parse_answer(full_text)
