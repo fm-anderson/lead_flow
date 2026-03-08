@@ -4,8 +4,6 @@ require_relative "../lib/lead_flow"
 require "dotenv/load"
 require "logger"
 
-ENV["NODE_OPTIONS"] = "--no-deprecation"
-
 # Set up logging to a file, rotating it when it hits 1MB, keeping 3 old logs
 log_file = File.join(File.dirname(__FILE__), "../db/lead_flow.log")
 Dir.mkdir("db") unless Dir.exist?("db")

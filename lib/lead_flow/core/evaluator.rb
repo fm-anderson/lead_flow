@@ -47,7 +47,7 @@ module LeadFlow
 
       def call_ai(prompt)
         case @provider.to_sym
-        when :gemini, :gemini_cli
+        when :gemini_cli
           call_gemini_cli(prompt)
         else
           raise "Unsupported AI provider: #{@provider}"
@@ -55,37 +55,24 @@ module LeadFlow
       end
 
       def call_gemini_cli(prompt)
-        model = ENV.fetch("GEMINI_MODEL", "gemini-2.5-flash")
-        
-        cmd = "gemini --model #{model} --non-interactive -"
-        
-        stdout, stderr, status = Open3.capture3(cmd, stdin_data: prompt)
+        # Use the gemini CLI in headless mode with gemini-3-flash
+        cmd = "gemini --model gemini-3-flash-preview --prompt #{Shellwords.escape(prompt)} --output-format text"
+        stdout, stderr, status = Open3.capture3(cmd)
 
         if status.success?
           parse_answer(stdout.to_s)
         else
+          puts "Gemini CLI Error: #{stderr}"
           [false, "Error: #{stderr}"]
         end
       end
 
       def parse_answer(full_text)
-        # 1. Clean up the text: Remove Markdown bolding and extra whitespace
-        clean_text = full_text.gsub(/\*\*|__/, "").strip
-
-        # 2. Extract Reasoning: Look for the line starting with REASONING
-        reasoning_match = clean_text.match(/REASONING:\s*(.*?)(?=FINAL_ANSWER:|\z)/im)
-        reasoning = reasoning_match ? reasoning_match[1].strip : "No reasoning provided."
-
-        # 3. Extract Final Answer: Look for YES or NO
-        answer_match = clean_text.match(/FINAL_ANSWER:\s*(YES|NO)/i)
+        # Extract reasoning and final answer from the CLI output
+        reasoning = full_text.match(/REASONING:\s*(.*)/)&.captures&.first
+        answer = (full_text.match(/FINAL_ANSWER:\s*(YES|NO)/)&.captures&.first || full_text).upcase
         
-        if answer_match
-          confirmed = answer_match[1].upcase == "YES"
-        else
-          confirmed = clean_text.upcase.include?("YES")
-        end
-
-        [confirmed, reasoning]
+        [answer.include?("YES"), reasoning]
       end
     end
   end
