@@ -55,8 +55,7 @@ module LeadFlow
       end
 
       def call_gemini_cli(prompt)
-        # Use the gemini CLI in headless mode with gemini-3-flash
-        cmd = "gemini --model gemini-3-flash --prompt #{Shellwords.escape(prompt)} --output-format text"
+        cmd = "gemini --model gemini-2.5-flash --prompt #{Shellwords.escape(prompt)} --output-format text"
         stdout, stderr, status = Open3.capture3(cmd)
 
         if status.success?
