@@ -2,6 +2,7 @@ require "spec_helper"
 require "lead_flow/lead"
 require "lead_flow/notifiers/base"
 require "lead_flow/notifiers/discord"
+require "faraday"
 
 RSpec.describe LeadFlow::Notifiers::Discord do
   let(:webhook_url) { "https://discord.com/api/webhooks/test" }
@@ -20,11 +21,11 @@ RSpec.describe LeadFlow::Notifiers::Discord do
 
   describe "#notify" do
     it "sends a POST request to the webhook URL" do
-      stub_request(:post, webhook_url).to_return(status: 204)
+      mock_response = instance_double(Faraday::Response, success?: true)
+      expect(Faraday).to receive(:post).with(webhook_url).and_return(mock_response)
 
       result = notifier.notify(lead, reasoning: "They are looking for a simple tool.")
       expect(result).to be true
-      expect(a_request(:post, webhook_url)).to have_been_made
     end
 
     it "returns false if no webhook URL is provided" do

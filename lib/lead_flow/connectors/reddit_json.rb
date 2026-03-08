@@ -7,6 +7,9 @@ module LeadFlow
     class RedditJson < Base
       BASE_URL = "https://www.reddit.com/r/%s/new.json?limit=%d"
 
+      # Internal error for handling retries
+      class RateLimitError < StandardError; end
+
       def initialize(subreddit:, user_agent:, limit: 25)
         @subreddit = subreddit
         @user_agent = user_agent
@@ -14,30 +17,49 @@ module LeadFlow
       end
 
       def fetch(after: nil, limit: nil)
+        retries = 0
         current_limit = limit || @limit
         url = sprintf(BASE_URL, @subreddit, current_limit)
         url += "&after=#{after}" if after
-        
         uri = URI(url)
-        response = make_request(uri)
 
-        if response.code == "429"
-          wait_time = (response["retry-after"] || 90).to_i
-          warn "\n[!] Rate limited on r/#{@subreddit}. Sleeping for #{wait_time}s..."
-          sleep(wait_time)
+        begin
           response = make_request(uri)
-        end
 
-        case response
-        when Net::HTTPSuccess
-          process_response(JSON.parse(response.body))
-        else
-          warn "\n[!] Reddit API Error: #{response.code} #{response.message} (r/#{@subreddit})"
+          if response.code == "429"
+            raise RateLimitError, response["retry-after"]
+          end
+
+          case response
+          when Net::HTTPSuccess
+            process_response(JSON.parse(response.body))
+          else
+            warn "\n[!] Reddit API Error: #{response.code} #{response.message} (r/#{@subreddit})"
+            []
+          end
+        rescue RateLimitError => e
+          if (retries += 1) < 3
+            wait_time = e.message&.to_i || (2**retries * 30)
+            warn "\n[!] Rate limited on r/#{@subreddit}. Sleeping for #{wait_time}s..."
+            sleep(wait_time)
+            retry
+          else
+            warn "[!] Max retries reached for r/#{@subreddit}"
+            []
+          end
+        rescue SocketError => e
+          if (retries += 1) < 3
+            warn "\n[!] DNS/Network Error: #{e.message}. Retrying in 5s..."
+            sleep(5)
+            retry
+          else
+            warn "\n[!] Reddit Connector Error: #{e.message}"
+            []
+          end
+        rescue StandardError => e
+          warn "\n[!] Reddit Connector Error: #{e.message}"
           []
         end
-      rescue StandardError => e
-        warn "\n[!] Reddit Connector Error: #{e.message}"
-        []
       end
 
       protected

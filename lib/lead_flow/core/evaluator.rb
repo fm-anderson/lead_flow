@@ -1,6 +1,5 @@
 require "json"
 require "open3"
-require "shellwords"
 
 module LeadFlow
   module Core
@@ -55,8 +54,13 @@ module LeadFlow
       end
 
       def call_gemini_cli(prompt)
-        cmd = "gemini --model gemini-2.5-flash --prompt #{Shellwords.escape(prompt)} --output-format text"
-        stdout, stderr, status = Open3.capture3(cmd)
+        model = ENV.fetch("AI_MODEL", "gemini-2.5-flash")
+        stdout, stderr, status = Open3.capture3(
+          "gemini",
+          "--model", model,
+          "--prompt", prompt,
+          "--output-format", "text"
+        )
 
         if status.success?
           parse_answer(stdout.to_s)
@@ -67,7 +71,6 @@ module LeadFlow
       end
 
       def parse_answer(full_text)
-        # Extract reasoning and final answer from the CLI output
         reasoning = full_text.match(/REASONING:\s*(.*)/)&.captures&.first
         answer = (full_text.match(/FINAL_ANSWER:\s*(YES|NO)/)&.captures&.first || full_text).upcase
         

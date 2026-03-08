@@ -23,7 +23,7 @@ The project is built as a series of decoupled Ruby modules:
 - **Connectors:** Platform-specific adapters (`LeadFlow::Connectors`) that fetch and "normalize" data.
 - **The Core:**
   - `Filter`: High-speed regex matching.
-  - `Evaluator`: The "AI Brain" powered by `gemini-cli` (using `gemini-2.5-flash`).
+  - `Evaluator`: The "AI Brain" powered by `gemini-cli` (defaults to `gemini-2.5-flash`, configurable via `AI_MODEL`).
   - `Deduplicator`: File-based persistence to ensure you never process the same lead twice.
 - **Notifiers:** (Coming Soon) Dispatchers for Slack, Telegram, or Discord.
 
@@ -32,10 +32,12 @@ The project is built as a series of decoupled Ruby modules:
 ## Getting Started
 
 ### 1. Prerequisites
+
 - Ruby 3.x
 - [Gemini CLI](https://github.com/google/gemini-cli) installed and configured on your machine.
 
 ### 2. Installation
+
 ```bash
 git clone https://github.com/fm-anderson/lead_flow.git
 cd lead_flow
@@ -43,11 +45,15 @@ bundle install
 ```
 
 ### 3. Configuration
+
 Copy the example environment file:
+
 ```bash
 cp .env.example .env
 ```
+
 Edit `.env` and provide your business context:
+
 ```env
 # What do you do?
 BUSINESS_CONTEXT="I provide a simple, no-subscription invoicing tool for freelancers."
@@ -61,9 +67,11 @@ MONITOR_KEYWORDS=invoice,billing,payments
 ```
 
 ### 4. Run the Engine
+
 ```bash
 ./bin/lead_flow
 ```
+
 Confirmed leads will be logged to `db/confirmed_leads.log`.
 
 ---
@@ -90,6 +98,7 @@ Every connector transforms data into this uniform structure:
 ## Contributing
 
 We love contributions!
+
 1.  **Create a New Connector:** Add a class to `lib/lead_flow/connectors/` that inherits from `Base`.
 2.  **Add a Notifier:** Help us build the Slack or Telegram dispatchers in `lib/lead_flow/notifiers/`.
 3.  **Refine the Evaluator:** Improve the AI prompt in `lib/lead_flow/core/evaluator.rb`.

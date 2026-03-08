@@ -11,12 +11,15 @@ module LeadFlow
       end
 
       def duplicate?(external_id)
+        @seen_ids.include?(external_id.to_s)
+      end
+
+      def add(external_id, status: "PROCESSED")
         id = external_id.to_s
-        return true if @seen_ids.include?(id)
+        return if @seen_ids.include?(id)
 
         @seen_ids.add(id)
-        persist_id(id)
-        false
+        persist_id(id, status)
       end
 
       private
@@ -28,11 +31,12 @@ module LeadFlow
       end
 
       def load_ids
-        File.readlines(@storage_path, chomp: true).to_set
+        # Load only the ID (lines also contain status)
+        File.readlines(@storage_path, chomp: true).map { |line| line.split(/\s+/).first }.to_set
       end
 
-      def persist_id(id)
-        File.open(@storage_path, "a") { |f| f.puts(id) }
+      def persist_id(id, status)
+        File.open(@storage_path, "a") { |f| f.puts("#{id} #{status}") }
       end
     end
   end

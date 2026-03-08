@@ -11,22 +11,32 @@ logger = Logger.new(log_file, 3, 1024 * 1024)
 
 # Use a clean format: [Timestamp] LEVEL: Message
 logger.formatter = proc { |severity, datetime, progname, msg|
-  "#{datetime.strftime('%Y-%m-%d %H:%M:%S')} #{severity}: #{msg}\n"
+  "[#{datetime.strftime('%Y-%m-%d %H:%M:%S')}] #{severity}: #{msg}\n"
 }
 
-# Configuration
+# Wrapper for console + file logging
+def log(logger, severity, msg)
+  puts msg
+  case severity
+  when :info  then logger.info(msg)
+  when :error then logger.error(msg)
+  when :fatal then logger.fatal(msg)
+  end
+end
+
 KEYWORDS = ENV.fetch("MONITOR_KEYWORDS", "").split(",")
 SUBREDDITS = ENV.fetch("REDDIT_SUBREDDITS", "freelance,smallbusiness").split(",")
 USER_AGENT = ENV["REDDIT_USER_AGENT"]
 BUSINESS_CONTEXT = ENV["BUSINESS_CONTEXT"]
 BUSINESS_SOLUTIONS = ENV["BUSINESS_SOLUTIONS"]
 
-logger.info("Starting Scan: #{SUBREDDITS.join(', ')}")
+log(logger, :info, "Starting Scan: #{SUBREDDITS.join(', ')}")
 
 begin
   filter = LeadFlow::Core::Filter.new(keywords: KEYWORDS)
   deduplicator = LeadFlow::Core::Deduplicator.new(storage_path: "db/seen_ids.txt")
-  evaluator = LeadFlow::Core::Evaluator.new(provider: :gemini_cli)
+  provider = ENV.fetch("AI_PROVIDER", "gemini_cli").to_sym
+  evaluator = LeadFlow::Core::Evaluator.new(provider: provider)
   notifier = LeadFlow::Notifiers::Discord.new(webhook_url: ENV["DISCORD_WEBHOOK_URL"])
 
   SUBREDDITS.each_with_index do |subreddit, index|
@@ -42,10 +52,12 @@ begin
       leads.each do |lead|
         next if deduplicator.duplicate?(lead.external_id)
 
+        status = "FILTERED"
         if filter.match?(lead)
-          puts "\nPotential Lead Found: [#{lead.source}] #{lead.title}"
-          puts "URL: #{lead.url}"
-          print "Evaluating Intent... "
+          log(logger, :info, "Potential Lead Found: [#{lead.source}] #{lead.title}")
+          log(logger, :info, "URL: #{lead.url}")
+          
+          sleep(1.5)
 
           confirmed, reasoning = evaluator.confirm_intent?(
             lead,
@@ -54,33 +66,39 @@ begin
           )
 
           if confirmed
-            puts "✅ CONFIRMED"
-            puts "   Reason: #{reasoning}" if reasoning
-
+            log(logger, :info, "✅ CONFIRMED")
+            log(logger, :info, "   Reason: #{reasoning}") if reasoning
+            status = "CONFIRMED"
             found_count += 1
             notifier.notify(lead, reasoning: reasoning)
+            
             File.open("db/confirmed_leads.log", "a") do |f|
               f.puts "[#{Time.now.strftime('%Y-%m-%d %H:%M')}] #{lead.title}"
               f.puts "URL: #{lead.url}"
               f.puts "Reason: #{reasoning}" if reasoning
               f.puts "-" * 40
             end
+          else
+            log(logger, :info, "❌ REJECTED")
+            log(logger, :info, "   Reason: #{reasoning}") if reasoning && !reasoning.start_with?("Error:")
+            status = "REJECTED"
           end
         end
+
+        deduplicator.add(lead.external_id, status: status)
       end
       
-      logger.info("Finished r/#{subreddit}. Potential leads confirmed: #{found_count}")
+      log(logger, :info, "Finished r/#{subreddit}. Potential leads confirmed: #{found_count}")
 
       sleep(rand(3..8)) if index < SUBREDDITS.size - 1
     rescue StandardError => e
-      logger.error("Failed r/#{subreddit}: #{e.message}")
+      log(logger, :error, "Failed r/#{subreddit}: #{e.message}")
     end
   end
   
-  puts "Scan Complete."
-  logger.info("Scan Complete.")
-  logger.info("--------------")
+  log(logger, :info, "Scan Complete.")
+  log(logger, :info, "--------------")
 
 rescue Interrupt, StandardError => e
-  logger.fatal("Critical Script Failure: #{e.message}\n#{e.backtrace.join("\n")}")
+  log(logger, :fatal, "Critical Script Failure: #{e.message}\n#{e.backtrace.join("\n")}")
 end
